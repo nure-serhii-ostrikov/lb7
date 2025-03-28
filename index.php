@@ -1,5 +1,4 @@
 <?php
-
 $dsn = 'mysql:host=db;dbname=lb_pdo_rent;charset=utf8';
 $username = 'user';
 $password = 'password';
@@ -23,17 +22,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $query = "SELECT SUM(Cost) AS total_income FROM rent WHERE Date_end <= :date";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['date' => $date]);
-        echo json_encode(['income' => $stmt->fetch()['total_income'] ?? 0]);
+        $income = $stmt->fetch()['total_income'] ?? 0;
+
+        // Response in plain text
+        echo number_format($income, 2) . " грн";
     } elseif ($action === 'cars_by_vendor') {
         $query = "SELECT cars.* FROM cars JOIN vendors ON cars.FID_Vendors = vendors.ID_Vendors WHERE vendors.Name = :vendor";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['vendor' => $vendor]);
-        echo json_encode($stmt->fetchAll());
+        $cars = $stmt->fetchAll();
+
+        // Response in XML
+        $xml = new SimpleXMLElement('<root/>');
+        foreach ($cars as $car) {
+            $carElement = $xml->addChild('car');
+            $carElement->addChild('name', $car['Name']);
+            $carElement->addChild('release_date', $car['Release_date']);
+        }
+        header('Content-Type: application/xml');
+        echo $xml->asXML();
     } elseif ($action === 'available_cars') {
         $query = "SELECT * FROM cars WHERE ID_Cars NOT IN (SELECT FID_Car FROM rent WHERE :date BETWEEN Date_start AND Date_end)";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['date' => $date]);
-        echo json_encode($stmt->fetchAll());
+        $availableCars = $stmt->fetchAll();
+
+        // Response in JSON
+        header('Content-Type: application/json');
+        echo json_encode($availableCars);
     }
     exit;
 }
@@ -44,45 +60,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Автопрокат</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script>
-        function fetchData(action, data, callback) {
-            $.post("index.php", { action: action, ...data }, function(response) {
-                callback(JSON.parse(response));
-            });
+        function fetchData(action, data, callback, responseType) {
+            const xhr = new XMLHttpRequest();
+            xhr.open('POST', 'index.php', true);
+            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
+
+            xhr.onload = function () {
+                if (xhr.status === 200) {
+                    if (responseType === 'text') {
+                        callback(xhr.responseText);
+                    } else if (responseType === 'xml') {
+                        const xmlDoc = xhr.responseXML;
+                        callback(xmlDoc);
+                    } else if (responseType === 'json') {
+                        const jsonResponse = JSON.parse(xhr.responseText);
+                        callback(jsonResponse);
+                    }
+                }
+            };
+
+            let queryString = `action=${action}`;
+            for (const key in data) {
+                if (data.hasOwnProperty(key)) {
+                    queryString += `&${key}=${encodeURIComponent(data[key])}`;
+                }
+            }
+
+            xhr.send(queryString);
         }
 
         function updateIncome() {
-            let date = $('#date').val();
-            fetchData('income', { date: date }, function(data) {
-                $('#income').text(data.income.toFixed(2) + ' грн');
-            });
+            let date = document.getElementById('date').value;
+            fetchData('income', { date: date }, function(response) {
+                document.getElementById('income').textContent = response + " грн";
+            }, 'text');
         }
 
         function updateCarsByVendor() {
-            let vendor = $('#vendor').val();
-            fetchData('cars_by_vendor', { vendor: vendor }, function(data) {
-                let list = $('#cars_by_vendor');
-                list.empty();
-                data.forEach(car => {
-                    list.append(`<li>${car.Name} (${car.Release_date})</li>`);
-                });
-            });
+            let vendor = document.getElementById('vendor').value;
+            fetchData('cars_by_vendor', { vendor: vendor }, function(xmlResponse) {
+                const cars = xmlResponse.getElementsByTagName('car');
+                const list = document.getElementById('cars_by_vendor');
+                list.innerHTML = '';
+                for (let i = 0; i < cars.length; i++) {
+                    const name = cars[i].getElementsByTagName('name')[0].textContent;
+                    const releaseDate = cars[i].getElementsByTagName('release_date')[0].textContent;
+                    list.innerHTML += `<li>${name} (${releaseDate})</li>`;
+                }
+            }, 'xml');
         }
 
         function updateAvailableCars() {
-            let date = $('#date').val();
-            fetchData('available_cars', { date: date }, function(data) {
-                let list = $('#available_cars');
-                list.empty();
-                data.forEach(car => {
-                    list.append(`<li>${car.Name} (${car.Release_date})</li>`);
+            let date = document.getElementById('date').value;
+            fetchData('available_cars', { date: date }, function(jsonResponse) {
+                const list = document.getElementById('available_cars');
+                list.innerHTML = '';
+                jsonResponse.forEach(function(car) {
+                    list.innerHTML += `<li>${car.Name} (${car.Release_date})</li>`;
                 });
-            });
+            }, 'json');
         }
 
-        $(document).ready(function() {
-            $('#filter-form').on('submit', function(e) {
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('filter-form').addEventListener('submit', function(e) {
                 e.preventDefault();
                 updateIncome();
                 updateCarsByVendor();
