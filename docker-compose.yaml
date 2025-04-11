@@ -3,17 +3,17 @@ version: '3.8'
 services:
   php:
     build: .
-    container_name: php_app
+    container_name: php_app_lb3
     volumes:
       - .:/var/www/html
     depends_on:
       - db
     ports:
-      - "8080:80"
+      - "8083:80"
 
   db:
     image: mysql:5.7
-    container_name: mysql_db
+    container_name: mysql_db_lb3
     restart: always
     environment:
       MYSQL_ROOT_PASSWORD: root
@@ -22,12 +22,12 @@ services:
       MYSQL_PASSWORD: password
     volumes:
       - mysql_data:/var/lib/mysql
-    ports:
-      - "3306:3306"
+    # ports:
+    #   - "3306:3306"
 
   phpmyadmin:
     image: phpmyadmin/phpmyadmin
-    container_name: phpmyadmin
+    container_name: phpmyadmin_lb3
     restart: always
     depends_on:
       - db
@@ -35,7 +35,7 @@ services:
       PMA_HOST: db
       MYSQL_ROOT_PASSWORD: root
     ports:
-      - "8081:80"
+      - "8084:80"
 
 volumes:
   mysql_data:
