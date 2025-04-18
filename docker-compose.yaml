@@ -4,8 +4,8 @@ services:
   php:
     build: .
     container_name: php_app_lb3
-    volumes:
-      - .:/var/www/html
+    # volumes:
+    #   - .:/var/www/html
     depends_on:
       - db
     ports:

@@ -13,12 +13,39 @@ try {
     die("Помилка підключення до бази даних: " . $e->getMessage());
 }
 
+try {
+
+    // Log table schema
+    // CREATE TABLE IF NOT EXISTS logs (
+    //     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    //     action TEXT NOT NULL,
+    //     parameters TEXT,
+    //     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+    // )
+
+    $logPdo = new PDO('sqlite:./logs.db');
+} catch (PDOException $e) {
+    die("Помилка підключення до log бази даних: " . $e->getMessage());
+}
+
+$logPdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+
+function log_request(PDO $logPdo, string $action, array $params = []) {
+    $stmt = $logPdo->prepare("INSERT INTO logs (action, parameters) VALUES (:action, :params)");
+    $stmt->execute([
+        'action' => $action,
+        'params' => json_encode($params, JSON_UNESCAPED_UNICODE)
+    ]);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $date = $_POST['date'] ?? date('Y-m-d');
     $vendor = $_POST['vendor'] ?? '';
     $action = $_POST['action'] ?? '';
 
     if ($action === 'income') {
+        log_request($logPdo, 'income', ['date' => $date]);
+
         $query = "SELECT SUM(Cost) AS total_income FROM rent WHERE Date_end <= :date";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['date' => $date]);
@@ -27,6 +54,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Response in plain text
         echo number_format($income, 2) . " грн";
     } elseif ($action === 'cars_by_vendor') {
+        log_request($logPdo, 'cars_by_vendor', ['vendor' => $vendor]);
+
         $query = "SELECT cars.* FROM cars JOIN vendors ON cars.FID_Vendors = vendors.ID_Vendors WHERE vendors.Name = :vendor";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['vendor' => $vendor]);
@@ -42,6 +71,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Content-Type: application/xml');
         echo $xml->asXML();
     } elseif ($action === 'available_cars') {
+        log_request($logPdo, 'available_cars', ['date' => $date]);
+
         $query = "SELECT * FROM cars WHERE ID_Cars NOT IN (SELECT FID_Car FROM rent WHERE :date BETWEEN Date_start AND Date_end)";
         $stmt = $pdo->prepare($query);
         $stmt->execute(['date' => $date]);
@@ -148,5 +179,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     <h2>Вільні автомобілі:</h2>
     <ul id="available_cars"></ul>
+
+    <h2>Журнал запитів</h2>
+    <table border="1" cellpadding="5">
+        <tr>
+            <th>ID</th>
+            <th>Дія</th>
+            <th>Параметр</th>
+            <th>Час</th>
+        </tr>
+
+        <?php 
+        $logStmt = $logPdo->query("SELECT * FROM logs ORDER BY id DESC");
+        $logs = $logStmt->fetchAll();
+        ?>
+
+
+        <?php foreach ($logs as $log): ?>
+            <tr>
+                <td><?= htmlspecialchars($log['id']) ?></td>
+                <td><?= htmlspecialchars($log['action']) ?></td>
+                <td><pre><?= htmlspecialchars($log['parameters']) ?></pre></td>
+                <td><?= htmlspecialchars($log['timestamp']) ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </table>
 </body>
 </html>
