@@ -29,6 +29,25 @@ function log_request(PDO $logPdo, string $action, array $params = []) {
     ]);
 }
 
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $date = $_GET['date'] ?? date('Y-m-d');
+    $vendor = $_GET['vendor'] ?? '';
+    $action = $_GET['action'] ?? '';
+
+    if ($action === 'income_jsonp') {
+        log_request($logPdo, 'income_jsonp', ['date' => $date]);
+
+        $query = "SELECT SUM(Cost) AS total_income FROM rent WHERE Date_end <= :date";
+        $stmt = $pdo->prepare($query);
+        $stmt->execute(['date' => $date]);
+        $income = $stmt->fetch()['total_income'] ?? 0;
+
+        header('Content-Type: application/javascript');
+        echo 'callback' . '(' . json_encode(['income' => number_format($income, 2)]) . ');';
+        exit;
+    }
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $date = $_POST['date'] ?? date('Y-m-d');
     $vendor = $_POST['vendor'] ?? '';
@@ -114,9 +133,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         function updateIncome() {
             let date = document.getElementById('date').value;
-            fetchData('income', { date: date }, function(response) {
-                document.getElementById('income').textContent = response + " грн";
-            }, 'text');
+            const script = document.createElement('script');
+            script.src = `index.php?action=income_jsonp&date=${encodeURIComponent(date)}`;
+            document.body.appendChild(script);
+            script.onload = function() {
+                document.body.removeChild(script);
+            };
+        }
+
+        function callback(data) {
+            document.getElementById('income').textContent = data.income + " грн";
         }
 
         function updateCarsByVendor() {
