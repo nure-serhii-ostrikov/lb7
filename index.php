@@ -14,15 +14,6 @@ try {
 }
 
 try {
-
-    // Log table schema
-    // CREATE TABLE IF NOT EXISTS logs (
-    //     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    //     action TEXT NOT NULL,
-    //     parameters TEXT,
-    //     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
-    // )
-
     $logPdo = new PDO('sqlite:./logs.db');
 } catch (PDOException $e) {
     die("Помилка підключення до log бази даних: " . $e->getMessage());
